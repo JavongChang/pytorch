@@ -3,6 +3,8 @@
 #include "THCHalfAutoNumerics.cuh"
 #include "SharedMem.cuh"
 
+#include <algorithm>
+
 template <typename T, typename AccumT>
 __global__ void cunn_SpatialLogSoftMax_updateOutput_kernel(T *output, T *input, int classSize, int height, int width)
 {
@@ -21,11 +23,17 @@ __global__ void cunn_SpatialLogSoftMax_updateOutput_kernel(T *output, T *input, 
       (width*classSize)*y +
       (classSize)*x;
 
+    T maxInput = input[inputStartIndex];
+    for (int i = 1; i < classSize; i++) {
+      T value = input[inputStartIndex + i];
+      maxInput = THCNumerics<T>::ge(maxInput, value) ? maxInput : value;
+    }
+
     AccumT sum = 0;
     for (int i = 0; i < classSize; i++) {
-      sum += THCNumerics<T>::exp(input[inputStartIndex + i]);
+      sum += THCNumerics<T>::exp(input[inputStartIndex + i] - maxInput);
     }
-    sum = AccumT(1) / sum;
+    T logsum = maxInput + ScalarConvert<AccumT, T>::to(THCNumerics<AccumT>::log(sum));
 
     for (int i = 0; i < classSize; i++) {
       // calculate output index in torch layout (B x C x H x W)
@@ -34,8 +42,7 @@ __global__ void cunn_SpatialLogSoftMax_updateOutput_kernel(T *output, T *input, 
         (height*width)*i +
         (width)*y +
         x;
-      output[outputIndex] = ScalarConvert<AccumT, T>::to(
-        THCNumerics<AccumT>::log(sum * THCNumerics<T>::exp(input[inputStartIndex + i])));
+      output[outputIndex] = input[inputStartIndex + i] - logsum;
     }
     index += blockDim.x;
   }
