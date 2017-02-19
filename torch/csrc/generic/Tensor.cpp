@@ -629,6 +629,7 @@ void THPTensor_(initCopyMethods)()
   #undef THCpuTensor_
 #endif
 #endif
+  fprintf(stderr, "%d\n", CUDA_VERSION);
 }
 
 template<bool force_tensor>
